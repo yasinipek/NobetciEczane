@@ -1,0 +1,73 @@
+﻿@model NobetciEczane.Models.EczaneModel
+@{
+    ViewData["Title"] = "Eczane Detayı - " + Model.Isim;
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3>@Model.Isim</h3>
+                    <a asp-action="Index" asp-route-il="@Model.Il" asp-route-tarih="@Model.Tarih" class="btn btn-outline-secondary">Listeye Dön</a>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4 font-weight-bold">İl:</div>
+                        <div class="col-md-8">@Model.Il</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4 font-weight-bold">İlçe:</div>
+                        <div class="col-md-8">@Model.Ilce</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4 font-weight-bold">Adres:</div>
+                        <div class="col-md-8">@Model.Adres</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4 font-weight-bold">Telefon:</div>
+                        <div class="col-md-8">
+                            <a href="tel:@Model.Telefon">@Model.Telefon</a>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4 font-weight-bold">Tarih:</div>
+                        <div class="col-md-8">@Model.Tarih</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Harita</h5>
+                </div>
+                <div class="card-body">
+                    <div id="map" style="height: 300px; width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var lat = @Model.Enlem.Replace(',', '.');
+            var lng = @Model.Boylam.Replace(',', '.');
+
+            var map = L.map('map').setView([lat, lng], 16);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            var marker = L.marker([lat, lng]).addTo(map);
+            marker.bindPopup("<b>@Model.Isim</b><br>@Model.Adres<br>Tel: @Model.Telefon").openPopup();
+        });
+    </script>
+}
