@@ -19,11 +19,8 @@ namespace NobetciEczane
                 options.UseSqlServer(
                     builder.Configuration.GetConnectionString("DefaultConnection")));
 
-            // EczaneService'i singleton olarak kaydet
+            // EczaneService'i singleton olarak kaydet - artýk BackgroundService deðil
             builder.Services.AddSingleton<EczaneService>();
-
-            // Ayný EczaneService instance'ýný hosted service olarak kullan
-            builder.Services.AddHostedService(provider => provider.GetRequiredService<EczaneService>());
 
             var app = builder.Build();
 

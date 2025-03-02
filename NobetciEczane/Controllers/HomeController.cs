@@ -62,17 +62,34 @@ namespace NobetciEczane.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> TetikleServis(string il)
+        public async Task<IActionResult> TetikleServis(string il, string tarih)
         {
             try
             {
+                // Parametreler hakkýnda log
+                Console.WriteLine($"TetikleServis çaðrýldý - Ýl: {il}, Tarih: {tarih}");
+
                 // Seçilmiþ il veya varsayýlan olarak ilk il
                 if (string.IsNullOrEmpty(il) && _iller.Count > 0)
                 {
                     il = _iller[0];
                 }
 
-                var tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+                // Eðer tarih belirtilmemiþse bugünün tarihini kullan
+                if (string.IsNullOrEmpty(tarih))
+                {
+                    tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+                    Console.WriteLine($"Tarih parametresi boþ geldi, bugünün tarihi kullanýlýyor: {tarih}");
+                }
+
+                // Tarih formatýný kontrol et ve düzelt
+                DateTime parsedDate;
+                if (DateTime.TryParse(tarih, out parsedDate))
+                {
+                    // Eðer tarih parse edilebiliyorsa, doðru formata çevir
+                    tarih = parsedDate.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+                    Console.WriteLine($"Tarih formatý düzeltildi: {tarih}");
+                }
 
                 // Chrome tarayýcýsýný baþlat
                 var options = new ChromeOptions();
@@ -86,14 +103,14 @@ namespace NobetciEczane.Controllers
                     await _eczaneService.ScrapeEczaneData(driver, il, tarih, CancellationToken.None);
                 }
 
-                TempData["SuccessMessage"] = $"{il} ili için nöbetçi eczane verileri baþarýyla güncellendi.";
+                TempData["SuccessMessage"] = $"{il} ili için {tarih} tarihindeki nöbetçi eczane verileri baþarýyla güncellendi.";
             }
             catch (Exception ex)
             {
                 TempData["ErrorMessage"] = $"Servis çalýþtýrýlýrken hata oluþtu: {ex.Message}";
             }
 
-            return RedirectToAction(nameof(Index), new { il });
+            return RedirectToAction(nameof(Index), new { il, tarih });
         }
 
         public async Task<IActionResult> Detay(int id)
