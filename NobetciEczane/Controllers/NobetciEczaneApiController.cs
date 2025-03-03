@@ -1,51 +1,113 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using NobetciEczane.Data;
+using NobetciEczane.Services;
 using System;
-using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 
 namespace NobetciEczane.Controllers
 {
-    [Route("api")]
+    [Route("api/scraping")]
     [ApiController]
-    public class EczaneApiController : ControllerBase
+    public class EczaneScrapingController : ControllerBase
     {
-        private readonly ApplicationDbContext _dbContext;
+        private readonly EczaneService _eczaneService;
+        private static CancellationTokenSource _cancellationTokenSource;
 
-        public EczaneApiController(ApplicationDbContext dbContext)
+        public EczaneScrapingController(EczaneService eczaneService)
         {
-            _dbContext = dbContext;
+            _eczaneService = eczaneService;
         }
 
-        [HttpGet]
-        [Route("eczaneler")]
-        public async Task<IActionResult> GetEczaneler(string il, string tarih)
+        // POST: api/scraping/start
+        [HttpPost("start")]
+        public IActionResult StartScraping()
         {
-            if (string.IsNullOrEmpty(tarih))
+            try
             {
-                tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+                // Önceki işlem çalışıyorsa iptal et
+                CancelExistingScraping();
+
+                // Yeni işlem başlat
+                _cancellationTokenSource = new CancellationTokenSource();
+
+                // İşlemi background thread'de başlat ki API çağrısı hemen cevap versin
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _eczaneService.StartScraping(_cancellationTokenSource.Token);
+                    }
+                    catch (Exception)
+                    {
+                        // Loglama EczaneService içinde yapılıyor
+                    }
+                }, _cancellationTokenSource.Token);
+
+                return Ok(new { message = "Nöbetçi eczane veri çekme işlemi başlatıldı." });
             }
-
-            var eczaneler = await _dbContext.Eczaneler
-                .Where(e => e.Il == il && e.Tarih == tarih)
-                .ToListAsync();
-
-            return Ok(eczaneler);
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Bir hata oluştu: {ex.Message}" });
+            }
         }
 
-        [HttpGet]
-        [Route("eczane/{id}")]
-        public async Task<IActionResult> GetEczane(int id)
+        // POST: api/scraping/city/ANKARA
+        [HttpPost("city/{il}")]
+        public IActionResult StartScrapingForCity(string il)
         {
-            var eczane = await _dbContext.Eczaneler.FindAsync(id);
-            if (eczane == null)
+            try
             {
-                return NotFound();
-            }
+                // Önceki işlem çalışıyorsa iptal et
+                CancelExistingScraping();
 
-            return Ok(eczane);
+                // Yeni işlem başlat
+                _cancellationTokenSource = new CancellationTokenSource();
+
+                // İşlemi background thread'de başlat ki API çağrısı hemen cevap versin
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _eczaneService.StartScrapingForCity(il, _cancellationTokenSource.Token);
+                    }
+                    catch (Exception)
+                    {
+                        // Loglama EczaneService içinde yapılıyor
+                    }
+                }, _cancellationTokenSource.Token);
+
+                return Ok(new { message = $"{il} ili için nöbetçi eczane veri çekme işlemi başlatıldı." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Bir hata oluştu: {ex.Message}" });
+            }
+        }
+
+        // POST: api/scraping/stop
+        [HttpPost("stop")]
+        public IActionResult StopScraping()
+        {
+            CancelExistingScraping();
+            return Ok(new { message = "Nöbetçi eczane veri çekme işlemi durduruldu." });
+        }
+
+        // GET: api/scraping/status
+        [HttpGet("status")]
+        public IActionResult GetScrapingStatus()
+        {
+            bool isRunning = _cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested;
+            return Ok(new { isRunning = isRunning });
+        }
+
+        private void CancelExistingScraping()
+        {
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource = null;
+            }
         }
     }
 }

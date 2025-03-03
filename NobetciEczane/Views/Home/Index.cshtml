@@ -1,6 +1,8 @@
 ﻿@model IEnumerable<NobetciEczane.Models.EczaneModel>
 @{
     ViewData["Title"] = "Nöbetçi Eczaneler";
+    var illerList = ViewBag.Iller as SelectList;
+    var seciliIlId = illerList?.SelectedValue?.ToString() ?? "";
 }
 
 <div class="container mt-4">
@@ -33,16 +35,19 @@
                         <div class="form-group row">
                             <label class="col-sm-2 col-form-label">İl:</label>
                             <div class="col-sm-8">
-                                <select name="il" class="form-control" id="ilSelectBox">
-                                    @foreach (var item in ViewBag.Iller)
+                                <select name="ilId" class="form-control" id="ilSelectBox">
+                                    @if (illerList != null)
                                     {
-                                        if (ViewBag.SeciliIl == item.Text)
+                                        foreach (var item in illerList)
                                         {
-                                            <option value="@item.Text" selected>@item.Text</option>
-                                        }
-                                        else
-                                        {
-                                            <option value="@item.Text">@item.Text</option>
+                                            if (item.Value == seciliIlId)
+                                            {
+                                                <option value="@item.Value" selected="selected">@item.Text</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@item.Value">@item.Text</option>
+                                            }
                                         }
                                     }
                                 </select>
@@ -60,7 +65,7 @@
                             <div class="col-sm-8">
                                 <input type="text" name="tarih" class="form-control datepicker" value="@ViewBag.Tarih" placeholder="GG/AA/YYYY" />
                             </div>
-                            <input type="hidden" name="il" value="@ViewBag.SeciliIl" />
+                            <input type="hidden" name="ilId" value="@seciliIlId" />
                             <div class="col-sm-2">
                                 <button type="submit" class="btn btn-primary">Filtrele</button>
                             </div>
@@ -72,7 +77,7 @@
                     <!-- Manuel Servis Tetikleme Butonu -->
                     <form asp-action="TetikleServis" method="post">
                         <div class="form-group row">
-                            <input type="hidden" name="il" value="@ViewBag.SeciliIl" />
+                            <input type="hidden" name="ilId" value="@seciliIlId" />
                             <input type="hidden" name="tarih" value="@ViewBag.Tarih" />
                             <div class="col-12">
                                 <button type="submit" class="btn btn-success btn-block w-100">
@@ -135,65 +140,63 @@
     </div>
 </div>
 
-@section Scripts {
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Tarih seçici
-            flatpickr(".datepicker", {
-                dateFormat: "d/m/Y",
-                locale: "tr",
-                allowInput: true
-            });
+<script>
+       document.addEventListener('DOMContentLoaded', function() {
+           // Tarih seçici
+           flatpickr(".datepicker", {
+               dateFormat: "d/m/Y",
+               locale: "tr",
+               allowInput: true
+           });
 
-            // Harita oluşturma
-            var map = L.map('map').setView([39.92077, 32.85411], 6); // Türkiye merkezi
+           // Harita oluşturma
+           var map = L.map('map').setView([39.92077, 32.85411], 6); // Türkiye merkezi
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
+           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+               maxZoom: 19,
+               attribution: '© OpenStreetMap contributors'
+           }).addTo(map);
 
-            // Eczaneleri haritaya ekle
-        @if (Model.Any())
+           // Eczaneleri haritaya ekle
+    @if (Model.Any())
+    {
+        <text>
+                                           var bounds = [];
+        </text>
+
+        foreach (var eczane in Model)
         {
-            <text>
-                        var bounds = [];
-            </text>
-
-            foreach (var eczane in Model)
+            if (!string.IsNullOrEmpty(eczane.Enlem) && !string.IsNullOrEmpty(eczane.Boylam))
             {
-                if (!string.IsNullOrEmpty(eczane.Enlem) && !string.IsNullOrEmpty(eczane.Boylam))
-                {
-                    <text>
-                                                var lat = @eczane.Enlem.Replace(',', '.');
-                                                var lng = @eczane.Boylam.Replace(',', '.');
-                                                var marker = L.marker([lat, lng]).addTo(map);
-                                                marker.bindPopup("<b>@eczane.Isim</b><br>@eczane.Adres<br>Tel: @eczane.Telefon");
-                                                bounds.push([lat, lng]);
-                    </text>
-                }
+                <text>
+                 var lat = @eczane.Enlem.Replace(',', '.');
+                 var lng = @eczane.Boylam.Replace(',', '.');
+                 var marker = L.marker([lat, lng]).addTo(map);
+                 marker.bindPopup("<b>@eczane.Isim</b><br>@eczane.Adres<br>Tel: @eczane.Telefon");
+                 bounds.push([lat, lng]);
+                </text>
             }
-
-            <text>
-                        if (bounds.length > 0) {
-                            map.fitBounds(bounds);
-                        }
-            </text>
         }
 
-            // Alert otomatik kapanma
-            window.setTimeout(function() {
-                $(".alert").fadeTo(500, 0).slideUp(500, function(){
-                    $(this).remove();
-                });
-            }, 5000);
-        });
-    </script>
-}
+        <text>
+                                           if (bounds.length > 0) {
+                                               map.fitBounds(bounds);
+                                           }
+        </text>
+    }
+
+           // Alert otomatik kapanma
+           window.setTimeout(function() {
+               $(".alert").fadeTo(500, 0).slideUp(500, function(){
+                   $(this).remove();
+               });
+           }, 5000);
+       });
+</script>

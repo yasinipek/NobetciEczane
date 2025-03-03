@@ -19,18 +19,6 @@ namespace NobetciEczane.Controllers
     {
         private readonly ApplicationDbContext _dbContext;
         private readonly EczaneService _eczaneService;
-        private readonly List<string> _iller = new List<string>
-        {
-            "ADANA", "ADIYAMAN", "AFYONKARAHÝSAR", "AÐRI", "AMASYA", "ANKARA", "ANTALYA", "ARTVÝN", "AYDIN", "BALIKESÝR",
-            "BÝLECÝK", "BÝNGÖL", "BÝTLÝS", "BOLU", "BURDUR", "BURSA", "ÇANAKKALE", "ÇANKIRI", "ÇORUM", "DENÝZLÝ",
-            "DÝYARBAKIR", "EDÝRNE", "ELAZIÐ", "ERZÝNCAN", "ERZURUM", "ESKÝÞEHÝR", "GAZÝANTEP", "GÝRESUN", "GÜMÜÞHANE",
-            "HAKKARÝ", "HATAY", "ISPARTA", "MERSÝN", "ÝSTANBUL", "ÝZMÝR", "KARS", "KASTAMONU", "KAYSERÝ", "KIRKLARELÝ",
-            "KIRÞEHÝR", "KOCAELÝ", "KONYA", "KÜTAHYA", "MALATYA", "MANÝSA", "KAHRAMANMARAÞ", "MARDÝN", "MUÐLA", "MUÞ",
-            "NEVÞEHÝR", "NÝÐDE", "ORDU", "RÝZE", "SAKARYA", "SAMSUN", "SÝÝRT", "SÝNOP", "SÝVAS", "TEKÝRDAÐ",
-            "TOKAT", "TRABZON", "TUNCELÝ", "ÞANLIURFA", "UÞAK", "VAN", "YOZGAT", "ZONGULDAK", "AKSARAY", "BAYBURT",
-            "KARAMAN", "KIRIKKALE", "BATMAN", "ÞIRNAK", "BARTIN", "ARDAHAN", "IÐDIR", "YALOVA", "KARABÜK", "KÝLÝS",
-            "OSMANÝYE", "DÜZCE"
-        };
 
         public HomeController(ApplicationDbContext dbContext, EczaneService eczaneService)
         {
@@ -38,41 +26,59 @@ namespace NobetciEczane.Controllers
             _eczaneService = eczaneService;
         }
 
-        public async Task<IActionResult> Index(string il = null, string tarih = null)
+        public async Task<IActionResult> Index(int? ilId = null, string tarih = null)
         {
             if (string.IsNullOrEmpty(tarih))
             {
                 tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
             }
 
-            if (string.IsNullOrEmpty(il) && _iller.Count > 0)
+            // Tüm illeri veritabanýndan al
+            var iller = await _dbContext.Iller.OrderBy(i => i.IlAdi).ToListAsync();
+
+            // Eðer ilId belirtilmemiþse ve iller listesi boþ deðilse ilk ili seç
+            if (ilId == null && iller.Any())
             {
-                il = _iller[0]; // Varsayýlan olarak ilk ili seç
+                ilId = iller.First().Id;
             }
 
             ViewBag.Tarih = tarih;
-            ViewBag.Iller = new SelectList(_iller, il);
-            ViewBag.SeciliIl = il;
+            ViewBag.Iller = new SelectList(iller, "Id", "IlAdi", ilId);
 
+            // SeçiliIl adýný bul
+            var seciliIl = await _dbContext.Iller.FirstOrDefaultAsync(i => i.Id == ilId);
+            ViewBag.SeciliIl = seciliIl?.IlAdi;
+
+            // Nöbetçi eczaneleri iliþkisel veritabanýna göre sorgula
             var eczaneler = await _dbContext.Eczaneler
-                .Where(e => e.Il == il && e.Tarih == tarih)
+                .Include(e => e.Il)
+                .Where(e => e.IlId == ilId && e.Tarih == tarih)
                 .ToListAsync();
 
             return View(eczaneler);
         }
 
         [HttpPost]
-        public async Task<IActionResult> TetikleServis(string il, string tarih)
+        public async Task<IActionResult> TetikleServis(int? ilId, string tarih)
         {
             try
             {
+                // Ýl ID'sini il adýna çevir
+                var il = await _dbContext.Iller.FirstOrDefaultAsync(i => i.Id == ilId);
+                string ilAdi = il?.IlAdi;
+
                 // Parametreler hakkýnda log
-                Console.WriteLine($"TetikleServis çaðrýldý - Ýl: {il}, Tarih: {tarih}");
+                Console.WriteLine($"TetikleServis çaðrýldý - Ýl ID: {ilId}, Ýl Adý: {ilAdi}, Tarih: {tarih}");
 
                 // Seçilmiþ il veya varsayýlan olarak ilk il
-                if (string.IsNullOrEmpty(il) && _iller.Count > 0)
+                if (ilId == null || string.IsNullOrEmpty(ilAdi))
                 {
-                    il = _iller[0];
+                    var ilkIl = await _dbContext.Iller.OrderBy(i => i.IlAdi).FirstOrDefaultAsync();
+                    if (ilkIl != null)
+                    {
+                        ilId = ilkIl.Id;
+                        ilAdi = ilkIl.IlAdi;
+                    }
                 }
 
                 // Eðer tarih belirtilmemiþse bugünün tarihini kullan
@@ -100,22 +106,26 @@ namespace NobetciEczane.Controllers
                 using (IWebDriver driver = new ChromeDriver(options))
                 {
                     // EczaneService'in ScrapeEczaneData metodunu çaðýr
-                    await _eczaneService.ScrapeEczaneData(driver, il, tarih, CancellationToken.None);
+                    // NOT: EczaneService.ScrapeEczaneData metodunu da güncellemek gerekebilir
+                    await _eczaneService.ScrapeEczaneData(driver, ilAdi, tarih, CancellationToken.None);
                 }
 
-                TempData["SuccessMessage"] = $"{il} ili için {tarih} tarihindeki nöbetçi eczane verileri baþarýyla güncellendi.";
+                TempData["SuccessMessage"] = $"{ilAdi} ili için {tarih} tarihindeki nöbetçi eczane verileri baþarýyla güncellendi.";
             }
             catch (Exception ex)
             {
                 TempData["ErrorMessage"] = $"Servis çalýþtýrýlýrken hata oluþtu: {ex.Message}";
             }
 
-            return RedirectToAction(nameof(Index), new { il, tarih });
+            return RedirectToAction(nameof(Index), new { ilId, tarih });
         }
 
         public async Task<IActionResult> Detay(int id)
         {
-            var eczane = await _dbContext.Eczaneler.FindAsync(id);
+            var eczane = await _dbContext.Eczaneler
+                .Include(e => e.Il)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
             if (eczane == null)
             {
                 return NotFound();
@@ -125,15 +135,15 @@ namespace NobetciEczane.Controllers
         }
 
         [HttpPost]
-        public IActionResult IlSecimi(string il, string tarih)
+        public IActionResult IlSecimi(int ilId, string tarih)
         {
-            return RedirectToAction("Index", new { il, tarih });
+            return RedirectToAction("Index", new { ilId, tarih });
         }
 
         [HttpPost]
-        public IActionResult TarihSecimi(string il, string tarih)
+        public IActionResult TarihSecimi(int ilId, string tarih)
         {
-            return RedirectToAction("Index", new { il, tarih });
+            return RedirectToAction("Index", new { ilId, tarih });
         }
     }
 }

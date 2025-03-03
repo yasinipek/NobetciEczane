@@ -11,27 +11,15 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace NobetciEczane.Services
 {
-    public class EczaneService : BackgroundService
+    public class EczaneService
     {
         private readonly ILogger<EczaneService> _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly List<string> _iller = new List<string>
-        {
-            "ADANA", "ADIYAMAN", "AFYONKARAHİSAR", "AĞRI", "AMASYA", "ANKARA", "ANTALYA", "ARTVİN", "AYDIN", "BALIKESİR",
-            "BİLECİK", "BİNGÖL", "BİTLİS", "BOLU", "BURDUR", "BURSA", "ÇANAKKALE", "ÇANKIRI", "ÇORUM", "DENİZLİ",
-            "DİYARBAKIR", "EDİRNE", "ELAZIĞ", "ERZİNCAN", "ERZURUM", "ESKİŞEHİR", "GAZİANTEP", "GİRESUN", "GÜMÜŞHANE",
-            "HAKKARİ", "HATAY", "ISPARTA", "MERSİN", "İSTANBUL", "İZMİR", "KARS", "KASTAMONU", "KAYSERİ", "KIRKLARELİ",
-            "KIRŞEHİR", "KOCAELİ", "KONYA", "KÜTAHYA", "MALATYA", "MANİSA", "KAHRAMANMARAŞ", "MARDİN", "MUĞLA", "MUŞ",
-            "NEVŞEHİR", "NİĞDE", "ORDU", "RİZE", "SAKARYA", "SAMSUN", "SİİRT", "SİNOP", "SİVAS", "TEKİRDAĞ",
-            "TOKAT", "TRABZON", "TUNCELİ", "ŞANLIURFA", "UŞAK", "VAN", "YOZGAT", "ZONGULDAK", "AKSARAY", "BAYBURT",
-            "KARAMAN", "KIRIKKALE", "BATMAN", "ŞIRNAK", "BARTIN", "ARDAHAN", "IĞDIR", "YALOVA", "KARABÜK", "KİLİS",
-            "OSMANİYE", "DÜZCE"
-        };
 
         public EczaneService(
             ILogger<EczaneService> logger,
@@ -41,61 +29,75 @@ namespace NobetciEczane.Services
             _serviceProvider = serviceProvider;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        // Bu metot artık manuel olarak çağrılacak
+        public async Task StartScraping(CancellationToken stoppingToken = default)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            _logger?.LogInformation("Nöbetçi eczane veri çekme işlemi başlatıldı: {time}", DateTimeOffset.Now);
+
+            var tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+
+            // Veritabanından illeri al
+            List<IlModel> iller;
+            using (var scope = _serviceProvider.CreateScope())
             {
-                // Şu anki saati al
-                var now = DateTime.Now;
-
-                // Bugün için hedef saat (08:00)
-                var targetTime = new DateTime(now.Year, now.Month, now.Day, 8, 0, 0);
-
-                // Eğer şu an 08:00'i geçtiyse, hedef zamanı yarına ayarla
-                if (now > targetTime)
-                {
-                    targetTime = targetTime.AddDays(1);
-                }
-
-                // Hedef zamana kadar bekle
-                var delay = targetTime - now;
-                _logger?.LogInformation("Nöbetçi eczane veri çekme servisi {time} tarihinde çalışacak şekilde planlandı", targetTime);
-
-                await Task.Delay(delay, stoppingToken);
-
-                // 08:00 oldu, servisi başlat
-                _logger?.LogInformation("Nöbetçi eczane veri çekme servisi başladı: {time}", DateTimeOffset.Now);
-
-                var tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
-
-                var options = new ChromeOptions();
-                // Headless modu kaldırıldı, tarayıcı görünür olacak
-                options.AddArgument("--no-sandbox");
-                options.AddArgument("--disable-dev-shm-usage");
-                options.AddArgument("--start-maximized"); // Tarayıcıyı tam ekran başlat
-
-                foreach (var il in _iller)
-                {
-                    if (stoppingToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    try
-                    {
-                        using (IWebDriver driver = new ChromeDriver(options))
-                        {
-                            await ScrapeEczaneData(driver, il, tarih, stoppingToken);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "{Il} ili için Chrome sürücüsü başlatılırken hata oluştu", il);
-                    }
-                }
-
-                _logger?.LogInformation("Nöbetçi eczane veri çekme servisi tamamlandı. Yarın saat 08:00'de tekrar çalışacak.");
+                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                iller = await dbContext.Iller.OrderBy(i => i.IlAdi).ToListAsync();
             }
+
+            var options = new ChromeOptions();
+            options.AddArgument("--no-sandbox");
+            options.AddArgument("--disable-dev-shm-usage");
+            options.AddArgument("--start-maximized");
+
+            foreach (var il in iller)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                try
+                {
+                    using (IWebDriver driver = new ChromeDriver(options))
+                    {
+                        await ScrapeEczaneData(driver, il.IlAdi, tarih, stoppingToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "{Il} ili için Chrome sürücüsü başlatılırken hata oluştu", il.IlAdi);
+                }
+            }
+
+            _logger?.LogInformation("Nöbetçi eczane veri çekme işlemi tamamlandı.");
+        }
+
+        // Belirli bir il için veri çekmeyi başlatan metot - tek il için çalıştırmak istenirse
+        public async Task StartScrapingForCity(string ilAdi, CancellationToken stoppingToken = default)
+        {
+            _logger?.LogInformation("{Il} ili için nöbetçi eczane veri çekme işlemi başlatıldı: {time}", ilAdi, DateTimeOffset.Now);
+
+            var tarih = DateTime.Now.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture);
+
+            var options = new ChromeOptions();
+            options.AddArgument("--no-sandbox");
+            options.AddArgument("--disable-dev-shm-usage");
+            options.AddArgument("--start-maximized");
+
+            try
+            {
+                using (IWebDriver driver = new ChromeDriver(options))
+                {
+                    await ScrapeEczaneData(driver, ilAdi, tarih, stoppingToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "{Il} ili için Chrome sürücüsü başlatılırken hata oluştu", ilAdi);
+                throw; // Hata yukarıya iletilsin ki controller'da yakalanabilsin
+            }
+
+            _logger?.LogInformation("{Il} ili için nöbetçi eczane veri çekme işlemi tamamlandı.", ilAdi);
         }
 
         // Eczane bilgilerini kesin olarak almanın fonksiyonu
@@ -166,15 +168,50 @@ namespace NobetciEczane.Services
             return text;
         }
 
-        public async Task ScrapeEczaneData(IWebDriver driver, string il, string tarih, CancellationToken stoppingToken)
+        public async Task ScrapeEczaneData(IWebDriver driver, string ilAdi, string tarih, CancellationToken stoppingToken)
         {
             try
             {
-                _logger?.LogInformation("{Il} ili için {Tarih} tarihinde veri çekme işlemi başladı", il, tarih);
+                _logger?.LogInformation("{Il} ili için {Tarih} tarihinde veri çekme işlemi başladı", ilAdi, tarih);
+
+                // İl ID'sini bul
+                int ilId = 0;
+                using (var scope = _serviceProvider.CreateScope())
+                {
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    // Önce veritabanı sorgusunu temel karşılaştırma ile yap
+                    var il = await dbContext.Iller
+                        .Where(i => i.IlAdi.ToLower() == ilAdi.ToLower())
+                        .FirstOrDefaultAsync();
+
+                    // Eğer bulunamadıysa, tüm illeri çekip memory'de karşılaştır
+                    if (il == null)
+                    {
+                        var tumIller = await dbContext.Iller.ToListAsync();
+                        il = tumIller.FirstOrDefault(i =>
+                            i.IlAdi.Equals(ilAdi, StringComparison.OrdinalIgnoreCase));
+
+                        if (il == null)
+                        {
+                            // Hala bulunamadıysa, biraz daha esnek bir arama yap
+                            il = tumIller.FirstOrDefault(i =>
+                                i.IlAdi.Contains(ilAdi, StringComparison.OrdinalIgnoreCase) ||
+                                ilAdi.Contains(i.IlAdi, StringComparison.OrdinalIgnoreCase));
+                        }
+                    }
+
+                    if (il == null)
+                    {
+                        _logger?.LogWarning("{Il} ili veritabanında bulunamadı", ilAdi);
+                        return;
+                    }
+
+                    ilId = il.Id;
+                }
 
                 // e-Devlet nöbetçi eczane sayfasına git
                 driver.Navigate().GoToUrl("https://www.turkiye.gov.tr/saglik-titck-nobetci-eczane-sorgulama");
-                _logger?.LogInformation("{Il} ili için e-Devlet sayfasına gidildi", il);
+                _logger?.LogInformation("{Il} ili için e-Devlet sayfasına gidildi", ilAdi);
 
                 // Sayfanın yüklenmesini bekle
                 WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(30));
@@ -183,8 +220,8 @@ namespace NobetciEczane.Services
 
                 // İl seçimini yap
                 var ilSelect = new SelectElement(driver.FindElement(By.Id("plakaKodu")));
-                ilSelect.SelectByText(il);
-                _logger?.LogInformation("{Il} şehri seçildi", il);
+                ilSelect.SelectByText(ilAdi);
+                _logger?.LogInformation("{Il} şehri seçildi", ilAdi);
 
                 // Tarih seçimini yap
                 wait.Until(d => d.FindElement(By.Id("nobetTarihi")));
@@ -206,7 +243,7 @@ namespace NobetciEczane.Services
                 }
                 catch (WebDriverTimeoutException)
                 {
-                    _logger?.LogWarning("{Il} ili için sonuçlar yüklenemedi.", il);
+                    _logger?.LogWarning("{Il} ili için sonuçlar yüklenemedi.", ilAdi);
                     return;
                 }
 
@@ -221,12 +258,12 @@ namespace NobetciEczane.Services
 
                     if (!tableExists)
                     {
-                        _logger?.LogWarning("{Il} ili için eczane tablosu bulunamadı.", il);
+                        _logger?.LogWarning("{Il} ili için eczane tablosu bulunamadı.", ilAdi);
                         return;
                     }
 
                     var eczaneElements = driver.FindElements(By.CssSelector("table tbody tr"));
-                    _logger?.LogInformation("{Il} ili için {Count} adet eczane bulundu", il, eczaneElements.Count);
+                    _logger?.LogInformation("{Il} ili için {Count} adet eczane bulundu", ilAdi, eczaneElements.Count);
 
                     for (int i = 0; i < eczaneElements.Count; i++)
                     {
@@ -243,7 +280,7 @@ namespace NobetciEczane.Services
                             // İndeks kontrolü
                             if (i >= eczaneElements.Count)
                             {
-                                _logger?.LogWarning("{Il} ili için eczane indeksi ({Index}) listeden büyük, döngü sonlandırılıyor.", il, i);
+                                _logger?.LogWarning("{Il} ili için eczane indeksi ({Index}) listeden büyük, döngü sonlandırılıyor.", ilAdi, i);
                                 break;
                             }
 
@@ -344,23 +381,21 @@ namespace NobetciEczane.Services
                             string telefon = GetElementTextWithRetry(driver, wait, "//dt[contains(text(), 'Telefon Numarası')]/following-sibling::dd", "Telefon");
                             string adres = GetElementTextWithRetry(driver, wait, "//dt[contains(text(), 'Adresi')]/following-sibling::dd", "Adres");
 
-                            // Boş değer kontrolü yapmamıza gerek yok, GetElementTextWithRetry zaten boş değer dönmez
-                            // Tüm bilgiler tam, eczane nesnesini oluştur
-
                             // Veritabanında bu eczane kaydı var mı kontrol et
                             using (var scope = _serviceProvider.CreateScope())
                             {
                                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                                bool eczaneExists = await dbContext.Eczaneler.AnyAsync(e =>
-                                    e.Isim == isim && e.Il == il && e.Tarih == tarih);
+                                bool eczaneExists = await dbContext.Eczaneler
+                                    .Where(e => e.IlId == ilId && e.Tarih == tarih)
+                                    .AnyAsync(e => e.Isim == isim);
 
                                 if (!eczaneExists)
                                 {
                                     var eczane = new EczaneModel
                                     {
                                         Isim = isim,
-                                        Il = il,
+                                        IlId = ilId, // İlişkisel yapı için IlId kullanılıyor
                                         Ilce = ilce,
                                         Telefon = telefon,
                                         Adres = adres,
@@ -371,11 +406,11 @@ namespace NobetciEczane.Services
                                     };
 
                                     eczaneler.Add(eczane);
-                                    _logger?.LogInformation("Eczane bilgileri başarıyla kaydedildi: {Isim}, {Il}, {Ilce}", isim, il, ilce);
+                                    _logger?.LogInformation("Eczane bilgileri başarıyla kaydedildi: {Isim}, {Il}, {Ilce}", isim, ilAdi, ilce);
                                 }
                                 else
                                 {
-                                    _logger?.LogInformation("Eczane zaten veritabanında mevcut: {Isim}, {Il}", isim, il);
+                                    _logger?.LogInformation("Eczane zaten veritabanında mevcut: {Isim}, {Il}", isim, ilAdi);
                                 }
                             }
 
@@ -396,7 +431,7 @@ namespace NobetciEczane.Services
 
                                 // İl ve tarih seçimini tekrar yap
                                 ilSelect = new SelectElement(driver.FindElement(By.Id("plakaKodu")));
-                                ilSelect.SelectByText(il);
+                                ilSelect.SelectByText(ilAdi);
 
                                 dateInput = driver.FindElement(By.Id("nobetTarihi"));
                                 dateInput.Clear();
@@ -425,7 +460,7 @@ namespace NobetciEczane.Services
 
                                 // İl ve tarih seçimini tekrar yap
                                 ilSelect = new SelectElement(driver.FindElement(By.Id("plakaKodu")));
-                                ilSelect.SelectByText(il);
+                                ilSelect.SelectByText(ilAdi);
 
                                 dateInput = driver.FindElement(By.Id("nobetTarihi"));
                                 dateInput.Clear();
@@ -444,7 +479,7 @@ namespace NobetciEczane.Services
                             catch
                             {
                                 // Kritik hata, bu il için işlemi sonlandır
-                                _logger?.LogError("Kritik hata, {Il} ili için veri çekme işlemi sonlandırılıyor.", il);
+                                _logger?.LogError("Kritik hata, {Il} ili için veri çekme işlemi sonlandırılıyor.", ilAdi);
                                 break;
                             }
                         }
@@ -452,7 +487,7 @@ namespace NobetciEczane.Services
                 }
                 else
                 {
-                    _logger?.LogInformation("{Il} ili için nöbetçi eczane bulunamadı.", il);
+                    _logger?.LogInformation("{Il} ili için nöbetçi eczane bulunamadı.", ilAdi);
                 }
 
                 // Veritabanına eczane bilgilerini kaydet
@@ -463,17 +498,17 @@ namespace NobetciEczane.Services
                         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                         await dbContext.Eczaneler.AddRangeAsync(eczaneler);
                         await dbContext.SaveChangesAsync();
-                        _logger?.LogInformation("{Il} ili için {Count} adet eczane veritabanına kaydedildi", il, eczaneler.Count);
+                        _logger?.LogInformation("{Il} ili için {Count} adet eczane veritabanına kaydedildi", ilAdi, eczaneler.Count);
                     }
                 }
                 else
                 {
-                    _logger?.LogInformation("{Il} ili için kaydedilecek yeni eczane bulunamadı", il);
+                    _logger?.LogInformation("{Il} ili için kaydedilecek yeni eczane bulunamadı", ilAdi);
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "{Il} ili için {Tarih} tarihinde veri çekme hatası", il, tarih);
+                _logger?.LogError(ex, "{Il} ili için {Tarih} tarihinde veri çekme hatası", ilAdi, tarih);
                 throw; // Manuel çağrılarda hatayı yukarıya ilet
             }
         }

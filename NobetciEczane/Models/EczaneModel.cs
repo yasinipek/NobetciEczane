@@ -1,10 +1,13 @@
-﻿namespace NobetciEczane.Models
+﻿using System.ComponentModel.DataAnnotations.Schema;
+
+namespace NobetciEczane.Models
 {
     public class EczaneModel
     {
         public int Id { get; set; }
         public string Isim { get; set; }
-        public string Il { get; set; }
+        public int IlId { get; set; }
+        public virtual IlModel Il { get; set; }
         public string Ilce { get; set; }
         public string Telefon { get; set; }
         public string Adres { get; set; }
