@@ -80,11 +80,27 @@
                             <input type="hidden" name="ilId" value="@seciliIlId" />
                             <input type="hidden" name="tarih" value="@ViewBag.Tarih" />
                             <div class="col-12">
-                                <button type="submit" class="btn btn-success btn-block w-100">
+                                <button type="submit" class="btn btn-success btn-block w-100 mb-3">
                                     <i class="bi bi-arrow-repeat"></i> Şimdi Güncelle (Manuel Veri Çekme)
                                 </button>
-                                <small class="form-text text-muted mt-2">
+                                <small class="form-text text-muted mt-2 mb-3">
                                     Bu işlem, seçili il (@ViewBag.SeciliIl) için @ViewBag.Tarih tarihindeki nöbetçi eczane verilerini hemen güncelleyecektir.
+                                </small>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Tüm İlleri Toplu Güncelleme Butonu -->
+                    <form asp-action="TetikleTumIller" method="post">
+                        <div class="form-group row">
+                            <input type="hidden" name="ilId" value="@seciliIlId" />
+                            <input type="hidden" name="tarih" value="@ViewBag.Tarih" />
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-warning btn-block w-100">
+                                    <i class="bi bi-arrow-repeat"></i> Seçili İlden İtibaren Güncelle
+                                </button>
+                                <small class="form-text text-muted mt-2">
+                                    Bu işlem, seçili il (@ViewBag.SeciliIl) ve listede sonraki tüm iller için @ViewBag.Tarih tarihindeki nöbetçi eczane verilerini sırayla güncelleyecektir. Bu işlem uzun sürebilir!
                                 </small>
                             </div>
                         </div>
@@ -168,7 +184,7 @@
     @if (Model.Any())
     {
         <text>
-                                           var bounds = [];
+                                               var bounds = [];
         </text>
 
         foreach (var eczane in Model)
@@ -176,19 +192,19 @@
             if (!string.IsNullOrEmpty(eczane.Enlem) && !string.IsNullOrEmpty(eczane.Boylam))
             {
                 <text>
-                 var lat = @eczane.Enlem.Replace(',', '.');
-                 var lng = @eczane.Boylam.Replace(',', '.');
-                 var marker = L.marker([lat, lng]).addTo(map);
-                 marker.bindPopup("<b>@eczane.Isim</b><br>@eczane.Adres<br>Tel: @eczane.Telefon");
-                 bounds.push([lat, lng]);
+                             var lat = @eczane.Enlem.Replace(',', '.');
+                             var lng = @eczane.Boylam.Replace(',', '.');
+                             var marker = L.marker([lat, lng]).addTo(map);
+                             marker.bindPopup("<b>@eczane.Isim</b><br>@eczane.Adres<br>Tel: @eczane.Telefon");
+                             bounds.push([lat, lng]);
                 </text>
             }
         }
 
         <text>
-                                           if (bounds.length > 0) {
-                                               map.fitBounds(bounds);
-                                           }
+                                               if (bounds.length > 0) {
+                                                   map.fitBounds(bounds);
+                                               }
         </text>
     }
 
